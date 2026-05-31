@@ -1,26 +1,30 @@
-<<<<<<< HEAD
+# Virtual env
 venv/
+.venv/
+
+# Python cache
 __pycache__/
 *.pyc
+
+# Environment
 .env
+
+# Logs
 logs/
+
+# IDE
 .vscode/
 .idea/
-=======
-# Dataset
+
+# Dataset (large)
 Dataset/
 
 # Numpy files
 *.npy
 
-# Weights
-*.keras
-*.h5
+# Large model files (keep small deployment weights)
+bilstm_model.keras
+*.h5.bak
 
 # Outputs
 outputs/
-
-# Virtual env
-venv/
-.venv/
->>>>>>> 8b793ca (Added preprocessing and BiLSTM training pipeline)

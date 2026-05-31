@@ -1,7 +1,8 @@
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import cv2
-import mediapipe as mp
+from mediapipe.python.solutions import hands as mp_hands_module
+from mediapipe.python.solutions import drawing_utils as mp_drawing_module
 import numpy as np
 import pickle
 from collections import deque
@@ -24,13 +25,11 @@ class GestureTransformer(VideoTransformerBase):
     def __init__(self):
         self.model, self.label_encoder = load_ai_model()
         self.sequence_buffer = deque(maxlen=SEQUENCE_LENGTH)
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
+        self.hands = mp_hands_module.Hands(
             max_num_hands=1,
             min_detection_confidence=0.7,
             min_tracking_confidence=0.7,
         )
-        self.mp_draw = mp.solutions.drawing_utils
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
@@ -42,7 +41,9 @@ class GestureTransformer(VideoTransformerBase):
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                self.mp_draw.draw_landmarks(img, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+                mp_drawing_module.draw_landmarks(
+                    img, hand_landmarks, mp_hands_module.HAND_CONNECTIONS
+                )
                 landmarks = []
                 for lm in hand_landmarks.landmark:
                     landmarks.extend([lm.x, lm.y])
@@ -60,7 +61,6 @@ class GestureTransformer(VideoTransformerBase):
                     except Exception:
                         predicted_label = str(predicted_class)
 
-        # Overlay label and confidence
         text = f"{predicted_label} {confidence:.2f}"
         cv2.putText(img, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 

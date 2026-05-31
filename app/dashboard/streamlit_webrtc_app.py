@@ -1,27 +1,39 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import cv2
 from mediapipe.python.solutions import hands as mp_hands_module
 from mediapipe.python.solutions import drawing_utils as mp_drawing_module
 import numpy as np
 import pickle
 from collections import deque
-from tensorflow.keras.models import load_model
+import tensorflow as tf
+from tensorflow.keras.layers import LSTM
 import av
 
 # Configuration
 SEQUENCE_LENGTH = 10
 
 
+# Keras 3 removed the `time_major` argument from LSTM.
+# This shim lets us load models saved with Keras 2 (.h5).
+class _CompatLSTM(LSTM):
+    def __init__(self, *args, time_major=False, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
 @st.cache_resource
 def load_ai_model():
-    model = load_model("weights/mha_gesturenet.h5")
+    model = tf.keras.models.load_model(
+        "weights/mha_gesturenet.h5",
+        custom_objects={"LSTM": _CompatLSTM},
+        compile=False,
+    )
     with open("weights/label_encoder.pkl", "rb") as f:
         label_encoder = pickle.load(f)
     return model, label_encoder
 
 
-class GestureTransformer(VideoTransformerBase):
+class GestureProcessor(VideoProcessorBase):
     def __init__(self):
         self.model, self.label_encoder = load_ai_model()
         self.sequence_buffer = deque(maxlen=SEQUENCE_LENGTH)
@@ -52,30 +64,32 @@ class GestureTransformer(VideoTransformerBase):
                     self.sequence_buffer.append(landmarks)
 
                 if len(self.sequence_buffer) == SEQUENCE_LENGTH:
-                    input_sequence = np.expand_dims(np.array(self.sequence_buffer, dtype=np.float32), axis=0)
-                    prediction = self.model.predict(input_sequence, verbose=0)
+                    input_seq = np.expand_dims(
+                        np.array(self.sequence_buffer, dtype=np.float32), axis=0
+                    )
+                    prediction = self.model.predict(input_seq, verbose=0)
                     predicted_class = np.argmax(prediction)
                     confidence = float(np.max(prediction))
                     try:
-                        predicted_label = self.label_encoder.inverse_transform([predicted_class])[0]
+                        predicted_label = self.label_encoder.inverse_transform(
+                            [predicted_class]
+                        )[0]
                     except Exception:
                         predicted_label = str(predicted_class)
 
         text = f"{predicted_label} {confidence:.2f}"
         cv2.putText(img, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
 def main():
     st.set_page_config(page_title="MHA · GestureNet (Live)", layout="wide")
-
     st.title("MHA-GestureNet — Live (WebRTC)")
-    st.write("Use your browser camera; allow webcam access when prompted.")
+    st.write("Allow webcam access when prompted, then click START.")
 
     webrtc_streamer(
         key="gesture",
-        video_transformer_factory=GestureTransformer,
+        video_processor_factory=GestureProcessor,
         media_stream_constraints={"video": True, "audio": False},
     )
 
